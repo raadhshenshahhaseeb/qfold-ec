@@ -52,9 +52,9 @@ func eqPoints(ax, ay, bx, by *big.Int) bool {
 // ------------------ EC point encoding ----------------------
 
 // encodePoint returns SEC1 uncompressed encoding (0x04 || x || y).
-// 0x04: prefix byte as defined by Standards for efficient cryptography
+// 0x04: prefix byte as defined by Standards for Efficient Cryptography
 //
-//	it means what you see is what you get, here are both the points
+//	it means what you see is what you get (the 0x04 part), here are both the points (followed by points)
 //
 // 0x04 || x || y: here are both the x and y coordinates in their entirety
 func encodePoint(c elliptic.Curve, x, y *big.Int) []byte {
