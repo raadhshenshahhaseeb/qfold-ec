@@ -29,3 +29,5 @@ When we rotate the sheet about a point `p != (0,0)`, we are really doing 3 moves
 3) slide back so `origin goes to p`
 
 the first/last slide (translation) makes the whole thing affine, not linear. Linear maps can't slide.
+
+### Fiat-Shamir heuristic

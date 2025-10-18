@@ -71,6 +71,7 @@ func decodePoint(c elliptic.Curve, b []byte) (x, y *big.Int, ok bool) {
 func main() {
 	s := NewP256Suite()
 
+	one := modN(big.NewInt(1), s.N) // 1.G = G
 	// scalar 2 mod n
 	two := modN(big.NewInt(2), s.N)
 
