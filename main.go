@@ -1,9 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"crypto/elliptic"
-	"fmt"
+	"crypto/sha256"
+	"hash"
 	"math/big"
 )
 
@@ -67,35 +67,81 @@ func decodePoint(c elliptic.Curve, b []byte) (x, y *big.Int, ok bool) {
 	return x, y, x != nil && y != nil
 }
 
-// ---------------------------------------------- 2.G == G + G
+// Transcript : --------- Step:2  Fiat-Shamir Transcript (deterministic)
+type Transcript struct {
+	h hash.Hash
+}
+
+// NewTranscript constructs a fresh,empty transcript
+func NewTranscript() *Transcript {
+	return &Transcript{h: sha256.New()}
+}
+
+// Absorb ingests a labeled sequence of byte slices.
+// Each label and each part is length-prefixed to avoid ambiguity.
+// No randomness(nothing up my sleeves); fully determined by inputs and their order.
+func (t *Transcript) Absorb(label string, parts ...[]byte) {
+	// label length (1 byte, for demo purpose, intentionally kept short)
+	if len(label) > 255 {
+		panic("label too long")
+	}
+	t.h.Write([]byte{byte(len(label))})
+	t.h.Write([]byte(label))
+
+	// number of parts (1 byte, demo simplicity)
+	if len(parts) > 255 {
+		panic("too many parts; keep small for demo")
+	}
+	t.h.Write([]byte{byte(len(parts))})
+
+	// each part: 4-byte big-endian length + bytes
+	for _, p := range parts {
+		lp := []byte{
+			byte(len(p) >> 24),
+			byte(len(p) >> 16),
+			byte(len(p) >> 8),
+			byte(len(p)),
+		}
+		t.h.Write(lp)
+		t.h.Write(p)
+	}
+}
+
+/*
+Step 2 goal:
+	- Add a transparent Fiat–Shamir transcript:
+  	- Absorb(label, data...) with explicit length-prefixing
+  	- ChallengeScalar(mod n): deterministically derive e ∈ {1..n-1}
+	- No randomness, no hidden seeds.
+
+We’ll *use* the EC helpers from Step 1 to create two points (G and 2G),
+absorb (domain, msg, P=G, R=2G), and show that flipping ANY byte changes e.
+*/
+
+// ----------------- task 2: binding sensitivity
 func main() {
 	s := NewP256Suite()
 
 	one := modN(big.NewInt(1), s.N) // 1.G = G
-	// scalar 2 mod n
-	two := modN(big.NewInt(2), s.N)
+	two := modN(big.NewInt(2), s.N) // 2.G
 
-	// Left side: 2.G
-	lx, ly := baseMul(s.C, two)
+	gx, gy := baseMul(s.C, one) // G
+	hx, hy := baseMul(s.C, two) // 2G
 
-	// right side: G+G (1.G)
-	one := modN(big.NewInt(1), s.N)
-	gx, gy := baseMul(s.C, one)             // G
-	rx, ry := pointAdd(s.C, gx, gy, gx, gy) // G+G
+	P := encodePoint(s.C, gx, gy) // P
+	R := encodePoint(s.C, hx, hy) // R
 
-	// check equals
-	equals := eqPoints(lx, ly, rx, ry)
-	if !equals {
-		fmt.Println("not equals: x,y")
-	}
+	domain := []byte("qfold-ec/v1")
+	message := []byte("register: user=haseeb, nonce=42")
 
-	fmt.Println("lx:", lx, "\tly:", ly)
-	fmt.Println("rx:", rx, "\try:", ry)
+	// in Schnorr/qFold-style proofs, the verifier computes e = H(transcript byes)
+	// and then checks z.G = R + e.P
 
-	LeftEncoded := encodePoint(s.C, lx, ly)
-	RightEncoded := encodePoint(s.C, rx, ry)
+	// Transcript #1
+	tr1 := NewTranscript()
+	tr1.Absorb("domain", domain)
+	tr1.Absorb("message", message)
+	tr1.Absorb("P", P)
+	tr1.Absorb("R", R)
 
-	if !bytes.Equal(LeftEncoded, RightEncoded) {
-		fmt.Println("not equals: leftEncoded, rightEncoded")
-	}
 }
